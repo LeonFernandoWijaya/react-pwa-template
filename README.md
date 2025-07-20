@@ -29,6 +29,10 @@ Welcome to **My PWA**! This project is a Progressive Web App designed to deliver
 
 Contributions are welcome! Please open an issue or submit a pull request.
 
+## Creator 👤
+
+Created by **Leon@2025**.
+
 ## License 📄
 
 This project is licensed under the MIT License.
