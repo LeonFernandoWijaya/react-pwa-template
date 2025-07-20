@@ -37,7 +37,7 @@ const saveProduct = async (productName) => {
   const db = await initDB();
   await db.add("products", {
     name: productName,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }),
   });
 };
 
