@@ -70,4 +70,171 @@ self.addEventListener("message", (event) => {
   }
 });
 
+// Function to get all image URLs dynamically from manifest
+const getImageUrls = async () => {
+  try {
+    console.log("🔍 Fetching images manifest...");
+    const response = await fetch("/images-manifest.json");
+
+    if (response.ok) {
+      const manifest = await response.json();
+      console.log(
+        `📋 Found ${
+          manifest.totalImages || manifest.images.length
+        } images in manifest`
+      );
+      return manifest.images || [];
+    } else {
+      console.warn("⚠️ Images manifest not found, using fallback");
+    }
+  } catch (error) {
+    console.warn("⚠️ Could not fetch images manifest:", error.message);
+  }
+
+  // Fallback ke daftar default jika manifest tidak tersedia
+  const fallbackImages = [
+    "/images/product-1.jpg",
+    "/images/product-2.jpg",
+    "/images/product-3.jpg",
+    "/images/product-4.jpg",
+    "/images/product-5.jpg",
+    "/images/product-6.jpg",
+  ];
+
+  console.log("📋 Using fallback image list");
+  return fallbackImages;
+};
+
+// Function to cache images with progress tracking
+const cacheImages = async () => {
+  try {
+    console.log("🚀 Starting image caching process...");
+    const cache = await caches.open("images");
+    const imageUrls = await getImageUrls();
+
+    if (imageUrls.length === 0) {
+      console.log("📭 No images to cache");
+      return;
+    }
+
+    // Check which images are not already cached
+    const uncachedImages = [];
+    console.log("🔍 Checking existing cache...");
+
+    for (const url of imageUrls) {
+      const response = await cache.match(url);
+      if (!response) {
+        uncachedImages.push(url);
+      }
+    }
+
+    // Cache only uncached images
+    if (uncachedImages.length > 0) {
+      console.log(`📥 Caching ${uncachedImages.length} new images...`);
+
+      // Cache images one by one with error handling
+      const results = await Promise.allSettled(
+        uncachedImages.map(async (url) => {
+          try {
+            const response = await fetch(url);
+            if (response.ok) {
+              await cache.put(url, response);
+              console.log(`✅ Cached: ${url}`);
+              return { url, success: true };
+            } else {
+              console.warn(`⚠️ Failed to fetch: ${url} (${response.status})`);
+              return { url, success: false, error: `HTTP ${response.status}` };
+            }
+          } catch (error) {
+            console.error(`❌ Error caching ${url}:`, error.message);
+            return { url, success: false, error: error.message };
+          }
+        })
+      );
+
+      // Report results
+      const successful = results.filter((r) => r.value?.success).length;
+      const failed = results.length - successful;
+
+      console.log(
+        `📊 Caching complete: ${successful} successful, ${failed} failed`
+      );
+
+      if (failed > 0) {
+        console.warn(
+          "❌ Failed images:",
+          results.filter((r) => !r.value?.success).map((r) => r.value?.url)
+        );
+      }
+    } else {
+      console.log("✅ All images are already cached");
+    }
+
+    // Report final cache status
+    const allCachedImages = await cache.keys();
+    const imagesCached = allCachedImages.filter((req) =>
+      req.url.includes("/images/")
+    ).length;
+    console.log(`📦 Total images in cache: ${imagesCached}`);
+  } catch (error) {
+    console.error("❌ Failed to cache images:", error);
+  }
+};
+
+// Cache images during service worker installation (pre-cache)
+self.addEventListener("install", (event) => {
+  console.log("🔧 Service Worker installing...");
+  event.waitUntil(
+    cacheImages()
+      .then(() => {
+        console.log("✅ Images pre-cached during installation");
+        return self.skipWaiting();
+      })
+      .catch((error) => {
+        console.error("❌ Error during installation:", error);
+        // Continue with installation even if image caching fails
+        return self.skipWaiting();
+      })
+  );
+});
+
+// Cache images when main page is accessed (runtime cache)
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  const isMainPage = url.pathname === "/" || url.pathname === "/index.html";
+
+  // Check if this is a navigation request to the main page
+  if (isMainPage && event.request.mode === "navigate") {
+    console.log("🏠 Main page accessed, checking image cache...");
+    // Cache images in the background without blocking the main request
+    event.waitUntil(
+      cacheImages().catch((error) => {
+        console.error("❌ Background image caching failed:", error);
+      })
+    );
+  }
+});
+
+// Activate event - clean up old caches if needed
+self.addEventListener("activate", (event) => {
+  console.log("🎯 Service Worker activated");
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      // Clean up old image caches if needed
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          // Keep current image cache and workbox caches
+          if (
+            cacheName.startsWith("images-old-") ||
+            (cacheName.includes("images") && cacheName !== "images")
+          ) {
+            console.log(`🗑️ Deleting old cache: ${cacheName}`);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});
+
 // Any other custom service worker logic can go here.
