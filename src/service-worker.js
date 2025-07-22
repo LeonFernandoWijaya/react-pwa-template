@@ -185,14 +185,27 @@ const cacheImages = async () => {
 self.addEventListener("install", (event) => {
   console.log("🔧 Service Worker installing...");
   event.waitUntil(
-    cacheImages()
+    Promise.all([
+      // Cache essential images first
+      cacheImages(),
+      // Precache other critical resources
+      caches.open("app-shell").then((cache) => {
+        return cache.addAll([
+          "/",
+          "/static/css/main.css", // Adjust based on your build output
+          "/static/js/main.js", // Adjust based on your build output
+          "/manifest.json",
+          "/favicon.ico",
+        ]);
+      }),
+    ])
       .then(() => {
-        console.log("✅ Images pre-cached during installation");
+        console.log("✅ All critical resources cached during installation");
         return self.skipWaiting();
       })
       .catch((error) => {
         console.error("❌ Error during installation:", error);
-        // Continue with installation even if image caching fails
+        // Continue with installation even if caching fails
         return self.skipWaiting();
       })
   );
